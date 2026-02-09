@@ -9,7 +9,7 @@ workdir="$(pwd)/turnip_workdir"
 magiskdir="$workdir/turnip_module"
 ndkver="android-ndk-r29"
 ndk="$workdir/$ndkver/toolchains/llvm/prebuilt/linux-x86_64/bin"
-sdkver="34"
+sdkver="36"
 mesasrc="https://gitlab.freedesktop.org/mesa/mesa/-/archive/main/mesa-main.zip"
 
 clear
@@ -218,7 +218,7 @@ port_lib_for_adrenotools(){
 	"schemaVersion": 1,
 	"name": "freedreno_turnip-CI",
 	"description": "$(date)",
-	"author": "MrMiy4mo, kethen",
+	"author": "wesleyvanneck, MrMiy4mo, kethen",
 	"packageVersion": "1",
 	"vendor": "Mesa",
 	"driverVersion": "$(cat $workdir/mesa-main/VERSION)",

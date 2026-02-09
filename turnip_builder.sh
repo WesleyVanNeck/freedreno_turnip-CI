@@ -10,7 +10,8 @@ magiskdir="$workdir/turnip_module"
 ndkver="android-ndk-r29"
 ndk="$workdir/$ndkver/toolchains/llvm/prebuilt/linux-x86_64/bin"
 sdkver="34"
-mesasrc="https://gitlab.freedesktop.org/mesa/mesa/-/archive/main/mesa-main.zip"
+mesasrc="https://gitlab.freedesktop.org/mesa/mesa/-/archive/mesa-25.3.0/mesa-mesa-25.3.0.zip"
+srcfolder="mesa-25.3.0"
 
 clear
 
@@ -20,8 +21,6 @@ run_all(){
 	check_deps
 	prepare_workdir
 	build_lib_for_android
-	port_lib_for_magisk
-	port_lib_for_adrenotools
 }
 
 check_deps(){
@@ -51,14 +50,14 @@ prepare_workdir(){
 
 	echo "Downloading android-ndk from google server ..." $'\n'
 		curl https://dl.google.com/android/repository/"$ndkver"-linux.zip --output "$ndkver"-linux.zip &> /dev/null
-	echo "Extracting android-ndk ..." $'\n'
+	echo "Exracting android-ndk ..." $'\n'
 		unzip "$ndkver"-linux.zip &> /dev/null
 
 	echo "Downloading mesa source ..." $'\n'
 		curl "$mesasrc" --output mesa-main.zip &> /dev/null
-	echo "Extracting mesa source ..." $'\n'
+	echo "Exracting mesa source ..." $'\n'
 		unzip mesa-main.zip &> /dev/null
-		cd mesa-main
+		cd mesa-$srcfolder
 }
 
 
@@ -85,7 +84,7 @@ c = ['ccache', '$ndk/aarch64-linux-android$sdkver-clang']
 cpp = ['ccache', '$ndk/aarch64-linux-android$sdkver-clang++', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '--start-no-unused-arguments', '-static-libstdc++', '--end-no-unused-arguments']
 c_ld = '$ndk/ld.lld'
 cpp_ld = '$ndk/ld.lld'
-strip = '$ndk/aarch64-linux-android-strip'
+strip = '$ndk/llvm-strip'
 pkg-config = ['env', 'PKG_CONFIG_LIBDIR=$ndk/pkg-config', '/usr/bin/pkg-config']
 
 [host_machine]
@@ -112,127 +111,24 @@ EOF
 		meson setup build-android-aarch64 \
 			--cross-file "android-aarch64.txt" \
 			--native-file "native.txt" \
+			--prefix /tmp/turnip \
 			-Dbuildtype=release \
+			-Dstrip=true \
 			-Dplatforms=android \
+			-Dvideo-codecs= \
 			-Dplatform-sdk-version="$sdkver" \
 			-Dandroid-stub=true \
 			-Dgallium-drivers= \
 			-Dvulkan-drivers=freedreno \
-			-Dvulkan-beta=true \
+			-Dvulkan-beta=false \
 			-Dfreedreno-kmds=kgsl \
-			-Db_lto=true \
-   			-Db_lto_mode=thin \
-			-Dstrip=true \
 			-Degl=disabled &> "$workdir/meson_log"
 
 	echo "Compiling build files ..." $'\n'
-		ninja -C build-android-aarch64 &> "$workdir/ninja_log"
+		ninja -C build-android-aarch64 install &> "$workdir/ninja_log"
 
-	if ! [ -a "$workdir"/mesa-main/build-android-aarch64/src/freedreno/vulkan/libvulkan_freedreno.so ]; then
+	if ! [ -a /tmp/turnip/lib/libvulkan_freedreno.so ]; then
 		echo -e "$red Build failed! $nocolor" && exit 1
-	fi
-}
-
-port_lib_for_magisk(){
-	echo "Using patchelf to match soname ..." $'\n'
-		cp "$workdir"/mesa-main/build-android-aarch64/src/freedreno/vulkan/libvulkan_freedreno.so "$workdir"
-		cd "$workdir"
-		patchelf --set-soname vulkan.turnip.so libvulkan_freedreno.so
-		mv libvulkan_freedreno.so vulkan.turnip.so
-
-	echo "Prepare magisk module structure ..." $'\n'
-		p1="system/vendor/lib64/hw"
-		mkdir -p "$magiskdir" && cd "$_"
-		mkdir -p "$p1"
-
-		meta="META-INF/com/google/android"
-		mkdir -p "$meta"
-
-		cat <<EOF >"$meta/update-binary"
-#################
-# Initialization
-#################
-umask 022
-ui_print() { echo "\$1"; }
-OUTFD=\$2
-ZIPFILE=\$3
-. /data/adb/magisk/util_functions.sh
-install_module
-exit 0
-EOF
-
-		cat <<EOF >"$meta/updater-script"
-#MAGISK
-EOF
-
-		cat <<EOF >"module.prop"
-id=turnip
-name=turnip
-version=$(cat $workdir/mesa-main/VERSION)
-versionCode=$(cat $workdir/mesa-main/VERSION | tr -cd '0-9')
-author=MrMiy4mo
-description=Turnip is an open-source vulkan driver for devices with adreno GPUs.
-updateJson=https://github.com/ilhan-athn7/freedreno_turnip-CI/releases/download/github_run/update.json
-EOF
-
-		cat <<EOF >"system.prop"
-debug.hwui.renderer=skiagl
-ro.hardware.vulkan=turnip
-EOF
-
-		cat <<EOF >"action.sh"
-#!/system/bin/sh
-if getprop ro.hardware.vulkan | grep -q "adreno"; then
-    resetprop ro.hardware.vulkan turnip
-    echo "Turnip is set as current vulkan driver."
-else
-    resetprop ro.hardware.vulkan adreno
-    echo "Adreno is set as current vulkan driver."
-fi
-sleep 10
-EOF
-
-		cat <<EOF >"customize.sh"
-set_perm_recursive \$MODPATH/system 0 0 0755 0644
-set_perm \$MODPATH/system/vendor/lib64/hw/vulkan.turnip.so 0 0 0644
-EOF
-
-	echo "Copy necessary files from work directory ..." $'\n'
-		cp "$workdir"/vulkan.turnip.so "$magiskdir"/"$p1"
-
-	echo "Packing files in to magisk module ..." $'\n'
-		zip -r "$workdir"/turnip.zip ./* &> /dev/null
-		if ! [ -a "$workdir"/turnip.zip ];
-			then echo -e "$red-Packing failed!$nocolor" && exit 1
-			else echo -e "$green-All done, the module saved to;$nocolor" && echo "$workdir"/turnip.zip
-		fi
-}
-
-port_lib_for_adrenotools(){
-	libname=vulkan.freedreno.so
-	echo "Using patchelf to match soname" $'\n'
-		cp "$workdir"/mesa-main/build-android-aarch64/src/freedreno/vulkan/libvulkan_freedreno.so "$workdir"/$libname
-		cd "$workdir"
-		patchelf --set-soname $libname $libname
-	echo "Preparing meta.json" $'\n'
-		cat <<EOF > "meta.json"
-{
-	"schemaVersion": 1,
-	"name": "freedreno_turnip-CI",
-	"description": "$(date)",
-	"author": "MrMiy4mo, kethen",
-	"packageVersion": "1",
-	"vendor": "Mesa",
-	"driverVersion": "$(cat $workdir/mesa-main/VERSION)",
-	"minApi": $sdkver,
-	"libraryName": "$libname"
-}
-EOF
-
-	zip -9 "$workdir"/turnip_adrenotools.zip $libname meta.json &> /dev/null
-	if ! [ -a "$workdir"/turnip_adrenotools.zip ];
-		then echo -e "$red-Packing turnip_adrenotools.zip failed!$nocolor" && exit 1
-		else echo -e "$green-All done, the module saved to;$nocolor" && echo "$workdir"/turnip_adrenotools.zip
 	fi
 }
 

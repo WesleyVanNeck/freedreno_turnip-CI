@@ -121,7 +121,9 @@ EOF
 			-Dvulkan-beta=false \
 			-Dfreedreno-kmds=kgsl \
 			-Dstrip=true \
-			-Degl=disabled &> "$workdir/meson_log"
+			-Degl=disabled \
+			-Dandroid-libbacktrace=disabled \
+			--reconfigure &> "$workdir/meson_log"
 
 	echo "Compiling build files ..." $'\n'
 		ninja -C build-android-aarch64 &> "$workdir/ninja_log"

@@ -55,10 +55,10 @@ prepare_workdir(){
 		unzip "$ndkver"-linux.zip &> /dev/null
 
 	echo "Downloading mesa source ..." $'\n'
-		curl "$mesasrc" --output mesa-main.zip &> /dev/null
+		curl "$mesasrc" --output mesa-main-e57fca6de22ccbc758384f4bb8c1be998a5dd825.zip &> /dev/null
 	echo "Extracting mesa source ..." $'\n'
-		unzip mesa-main.zip &> /dev/null
-		cd mesa-main
+		unzip mesa-main-e57fca6de22ccbc758384f4bb8c1be998a5dd825.zip &> /dev/null
+		cd mesa-main-e57fca6de22ccbc758384f4bb8c1be998a5dd825
 }
 
 
